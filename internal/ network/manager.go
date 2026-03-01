@@ -58,7 +58,7 @@ func (m *Manager) ConnectToPeers(nodes []config.NodeInfo) error {
         m.mu.Unlock()
     }
  }
-func (m *Manager) Broadcast(msg Message) { ... }
+func (m *Manager) Broadcast(msg Message) { }
 func (m *Manager) Send(nodeID string, msg Message) error { ... }
 func (m *Manager) Inbox() <-chan Message { ... }
 func (m *Manager) Failures() <-chan string { ... }
