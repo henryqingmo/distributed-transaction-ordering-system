@@ -4,6 +4,8 @@ import (
 	"cs425_mp1/internal/config"
 	"net"
 	"sync"
+    "encoding/json"
+	"golang.org/x/text/message"
 )
 
 type Manager struct {
@@ -58,8 +60,29 @@ func (m *Manager) ConnectToPeers(nodes []config.NodeInfo) error {
         m.mu.Unlock()
     }
  }
-func (m *Manager) Broadcast(msg Message) { }
-func (m *Manager) Send(nodeID string, msg Message) error { ... }
+
+func (m *Manager) Broadcast(msg Message) {
+
+}
+
+
+func (m *Manager) Send(nodeID string, msg Message) error { 
+    m.mu.Lock()
+    conn, ok := m.peers[nodeID]
+    m.mu.Unlock()
+        if !ok {
+        return fmt.Errorf("no connection for peer %s", nodeID)
+    }
+
+    data, err := json.Marshal(msg)
+    if err != nil {
+        return err
+    }
+
+    _, err = conn.Write(data)
+    return err
+ }
+
 func (m *Manager) Inbox() <-chan Message { ... }
 func (m *Manager) Failures() <-chan string { ... }
 func (m *Manager) Close() { ... }...

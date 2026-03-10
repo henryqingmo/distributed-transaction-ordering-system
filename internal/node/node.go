@@ -19,6 +19,8 @@ func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
 	manager := manager.NewManager(identifier, 1024)
 	manager.ConnectToPeers(parsed.Nodes)
 
+	
+
 	return &Node{
 		identifier: identifier,
 		parsed:     parsed,
