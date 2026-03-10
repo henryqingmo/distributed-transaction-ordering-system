@@ -1,7 +1,8 @@
 package main
 
 import (
-	"cs425_mp1/internal/config"
+	config "cs425_mp1/internal/config"
+	node "cs425_mp1/internal/node"
 	"fmt"
 	"log"
 	"os"
@@ -26,9 +27,13 @@ func main() {
 	}
 	identifier := os.Args[1]
 
-	node, err := config.ParseIdentifier(parsed, identifier)
+	nodeInfo, err := config.ParseIdentifier(parsed, identifier)
+	if err != nil {
+		log.Fatalf("parse identifier: %v", err)
+	}
 
-	n := node.NewNode(node, parsed)
+	n := node.NewNode(nodeInfo, parsed)
+
 	n.Run()
 
 }
