@@ -3,23 +3,23 @@ package node
 import (
 	"bufio"
 	"cs425_mp1/internal/config"
-	"cs425_mp1/internal/network"
+	manager "cs425_mp1/internal/network"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
 type Node struct {
-	identifier config.NodeInfo
-	parsed     config.Parsed
+	identifier     config.NodeInfo
+	parsed         config.Parsed
+	networkManager manager.Manager
 }
 
 func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
 	manager := manager.NewManager(identifier, 1024)
 	manager.ConnectToPeers(parsed.Nodes)
-
-	
 
 	return &Node{
 		identifier: identifier,
@@ -56,13 +56,19 @@ func (n *Node) Run() {
 		switch action {
 		case "DEPOSIT":
 			account := fields[1]
-			amount := fields[2]
-			fmt.Printf("Action: %s, Account: %s, Amount: %s\n", action, account, amount)
+			amount, err := strconv.Atoi(fields[2])
+			if err != nil {
+				fmt.Println("conversion error:", err)
+			}
+			manager.NewDeposit(account, amount)
 		case "TRANSFER":
 			account1 := fields[1]
 			account2 := fields[3]
-			amount := fields[4]
-			fmt.Printf("Action: %s, Account1: %s, Account2: %s, Amount: %s\n", action, account1, account2, amount)
+			amount, err := strconv.Atoi(fields[4])
+			if err != nil {
+				fmt.Println("conversion error:", err)
+			}
+			manager.NewTransfer(account1, account2, amount)
 		}
 	}
 }

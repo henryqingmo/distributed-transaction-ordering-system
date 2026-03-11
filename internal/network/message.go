@@ -41,3 +41,27 @@ type MsgAgree struct {
 	AgreedPriority int
 	FinalNodeID    string
 }
+
+func NewTransfer(source, dest string, amount int) Message {
+
+	return Message{
+		Type: TypeTransaction,
+		Transaction: &MsgTransaction{
+			Kind:   Transfer,
+			Source: source,
+			Dest:   dest,
+			Amount: amount,
+		},
+	}
+}
+
+func NewDeposit(account string, amount int) Message {
+	return Message{
+		Type: TypeTransaction,
+		Transaction: &MsgTransaction{
+			Kind:    Deposit,
+			Account: account,
+			Amount:  amount,
+		},
+	}
+}
