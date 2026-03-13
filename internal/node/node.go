@@ -54,7 +54,7 @@ func (n *Node) parseLine(line string) (manager.Message, bool) {
 			log.Printf("bad amount in: %q", line)
 			return manager.Message{}, false
 		}
-		return manager.NewDeposit(msgID, fields[1], amount), true
+		return manager.NewDeposit(msgID, n.identifier.ID, fields[1], amount), true
 	case "TRANSFER":
 		if len(fields) < 5 {
 			log.Printf("skipping malformed line: %q", line)
@@ -65,7 +65,7 @@ func (n *Node) parseLine(line string) (manager.Message, bool) {
 			log.Printf("bad amount in: %q", line)
 			return manager.Message{}, false
 		}
-		return manager.NewTransfer(msgID, fields[1], fields[3], amount), true
+		return manager.NewTransfer(msgID, n.identifier.ID, fields[1], fields[3], amount), true
 	default:
 		log.Printf("unknown action %q", fields[0])
 		return manager.Message{}, false
