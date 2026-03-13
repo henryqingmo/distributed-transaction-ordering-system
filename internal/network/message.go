@@ -42,7 +42,6 @@ type MsgPropose struct {
 type MsgAgree struct {
 	MsgId          string
 	AgreedPriority float64
-	FinalNodeID    string
 }
 
 func NewTransfer(msgId, source, dest string, amount int) Message {
@@ -65,6 +64,27 @@ func NewDeposit(msgId, account string, amount int) Message {
 			Kind:    Deposit,
 			Account: account,
 			Amount:  amount,
+		},
+	}
+}
+
+func NewPropose(msgID string, priority float64, fromNode string) Message {
+	return Message{
+		Type: TypePropose,
+		Propose: MsgPropose{
+			MsgId:            msgID,
+			ProposedPriority: priority,
+			FromNode:         fromNode,
+		},
+	}
+}
+
+func NewAgree(msgID string, priority float64) Message {
+	return Message{
+		Type: TypeAgree,
+		Agree: MsgAgree{
+			MsgId:          msgID,
+			AgreedPriority: priority,
 		},
 	}
 }

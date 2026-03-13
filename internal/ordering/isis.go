@@ -68,10 +68,10 @@ func NewQueueItem(id string, tx manager.MsgTransaction, priority float64, delive
 	}
 }
 
-func (o *isisOrdering) HandleMessage(msg manager.Message) {
+func (o *isisOrdering) HandleMessage(nodeID string, msg manager.Message) {
 	switch msg.Type {
 	case manager.TypeTransaction:
-		o.OnReceiveTransaction(msg)
+		o.OnReceiveTransaction(nodeID, msg)
 	case manager.TypePropose:
 		o.OnReceivePropose(msg)
 	case manager.TypeAgree:
@@ -97,7 +97,7 @@ func (o *isisOrdering) DeliveryReady() []*QueueItem {
 		if !item.deliverable {
 			break
 		}
-		ready = append(ready, item)
+		ready = append(ready, o.holdbackQueue.Dequeue())
 	}
 	return ready
 }
@@ -107,7 +107,7 @@ type Outbound struct {
 	Msg manager.Message
 }
 
-func (o *isisOrdering) OnReceiveTransaction(msg manager.Message) Outbound {
+func (o *isisOrdering) OnReceiveTransaction(nodeID string, msg manager.Message) Outbound {
 	o.counter++
 	item := NewQueueItem(
 		msg.Transaction.MsgId,
@@ -117,10 +117,15 @@ func (o *isisOrdering) OnReceiveTransaction(msg manager.Message) Outbound {
 		msg.Transaction.Sender,
 	)
 	o.holdbackQueue.Enqueue(item)
+	o.messageMap[msg.Transaction.MsgId] = item
 	// Send TypePropose back to msg.Transaction.Sender
 	return Outbound{
-		msg.Transaction.Sender,
-		msg,
+		To:	msg.Transaction.Sender,
+		Msg: manager.NewPropose(
+			msg.Transaction.MsgId,
+			o.counter, 
+			nodeID,
+		),
 	}
 }
 
@@ -138,19 +143,23 @@ func (o *isisOrdering) OnReceivePropose(msg manager.Message) *Outbound {
 	if state.count == o.numNodes {
 		delete(o.proposals, msgID)
 		return &Outbound{
-			To: "", // broadcast
-			Msg: manager.Message{
-				Type: manager.TypeAgree,
-				Agree: manager.MsgAgree{
-					MsgId:          msgID,
-					AgreedPriority: state.maxPriority,
-				},
-			},
+			To:  "",
+			Msg: manager.NewAgree(msgID, state.maxPriority),
 		}
 	}
 	return nil
 }
 
 func (o *isisOrdering) onReceiveAgree(msg manager.Message) {
+	item, ok := o.messageMap[msg.Agree.MsgId]
+	if !ok {
+		return
+	}
+	item.priority = msg.Agree.AgreedPriority
+	item.deliverable = true
+	o.holdbackQueue.Sort()
 
+	if msg.Agree.AgreedPriority > o.counter {
+		o.counter = msg.Agree.AgreedPriority
+	}
 }
