@@ -98,7 +98,12 @@ func (n *Node) Run() {
 			if !ok {
 				return
 			}
-			// TODO: set SenderID, broadcast msg, run ISIS as originator
+			msg.SenderID = n.identifier.ID
+			msg.Transaction.Sender = n.identifier.Host
+			n.networkManager.Broadcast(msg)
+			out := n.ordering.HandleMessage(n.identifier.ID, msg)
+			n.ordering.HandleMessage(n.identifier.ID, out.Msg)
+
 			_ = msg
 		case msg := <-n.networkManager.Inbox():
 			out := n.ordering.HandleMessage(n.identifier.ID, msg)
