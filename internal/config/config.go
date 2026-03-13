@@ -34,6 +34,10 @@ func ParseConfig(filePath string) (Parsed, error) {
 		}
 
 		fields := strings.Fields(line)
+		if len(fields) == 1 {
+			// First line of spec format is the node count; skip it.
+			continue
+		}
 		if len(fields) != 3 {
 			return Parsed{}, fmt.Errorf("malformed line: %q", line)
 		}
