@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type Manager struct {
@@ -52,8 +53,8 @@ func (m *Manager) ConnectToPeers(nodes []config.NodeInfo) error {
 			continue
 		}
 		m.peerIDs = append(m.peerIDs, node.ID)
-		// Establish TCP connection to peer
-		conn, err := net.Dial("tcp", net.JoinHostPort(node.Host, node.Port))
+		addr := net.JoinHostPort(node.Host, node.Port)
+		conn, err := dialWithRetry(addr)
 		if err != nil {
 			return fmt.Errorf("failed to connect to peer %s: %v", node.ID, err)
 		}
@@ -62,6 +63,18 @@ func (m *Manager) ConnectToPeers(nodes []config.NodeInfo) error {
 		m.mu.Unlock()
 	}
 	return nil
+}
+
+// dialWithRetry keeps trying to connect until successful, with 500ms between attempts.
+// Heartbeat 
+func dialWithRetry(addr string) (net.Conn, error) {
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+		if err == nil {
+			return conn, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func (m *Manager) Broadcast(msg Message) {
