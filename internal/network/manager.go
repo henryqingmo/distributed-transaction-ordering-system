@@ -2,7 +2,6 @@ package manager
 
 import (
 	"cs425_mp1/internal/config"
-	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -80,22 +79,14 @@ func (m *Manager) Send(nodeID string, msg Message) error {
 	if !ok {
 		return fmt.Errorf("no connection for peer %s", nodeID)
 	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.Write(data)
-	return err
+	return WriteMsg(conn, msg)
 }
 
 func (m *Manager) handleConnection(conn net.Conn) {
 	defer conn.Close()
-	dec := json.NewDecoder(conn)
 	for {
-		var msg Message
-		if err := dec.Decode(&msg); err != nil {
+		msg, err := ReadMsg(conn)
+		if err != nil {
 			return
 		}
 		m.inbox <- msg
