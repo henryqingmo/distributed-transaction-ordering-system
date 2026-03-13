@@ -19,7 +19,7 @@ type QueueItem struct {
 	DeliveryTime time.Time // set when item is dequeued for delivery
 }
 
-type isisOrdering struct {
+type ISISOrdering struct {
 	holdbackQueue Queue
 	messageMap    map[string]*QueueItem
 	counter       float64
@@ -50,8 +50,8 @@ func (q *Queue) Peek() *QueueItem {
 	return q.items[0]
 }
 
-func NewISISOrdering(numNodes int) *isisOrdering {
-	return &isisOrdering{
+func NewISISOrdering(numNodes int) *ISISOrdering {
+	return &ISISOrdering{
 		holdbackQueue: Queue{},
 		messageMap:    make(map[string]*QueueItem),
 		proposals:     make(map[string]*proposalState),
@@ -70,15 +70,16 @@ func NewQueueItem(id string, tx manager.MsgTransaction, priority float64, delive
 	}
 }
 
-func (o *isisOrdering) HandleMessage(nodeID string, msg manager.Message) {
+func (o *ISISOrdering) HandleMessage(nodeID string, msg manager.Message) *Outbound {
 	switch msg.Type {
 	case manager.TypeTransaction:
-		o.OnReceiveTransaction(nodeID, msg)
+		return o.OnReceiveTransaction(nodeID, msg)
 	case manager.TypePropose:
-		o.OnReceivePropose(msg)
+		return o.OnReceivePropose(msg)
 	case manager.TypeAgree:
-		o.onReceiveAgree(msg)
+		return o.onReceiveAgree(msg)
 	}
+	return nil
 
 }
 
@@ -91,15 +92,15 @@ func (q *Queue) Sort() {
 	})
 }
 
-func (o *isisOrdering) DeliveryReady() []*QueueItem {
-	var ready []*QueueItem
+func (o *ISISOrdering) DeliveryReady() []manager.MsgTransaction {
+	var ready []manager.MsgTransaction
 	for len(o.holdbackQueue.items) > 0 {
 		item := o.holdbackQueue.Peek()
 		if !item.deliverable {
 			break
 		}
 		item.DeliveryTime = time.Now()
-		ready = append(ready, o.holdbackQueue.Dequeue())
+		ready = append(ready, o.holdbackQueue.Dequeue().tx)
 	}
 	return ready
 }
@@ -109,7 +110,7 @@ type Outbound struct {
 	Msg manager.Message
 }
 
-func (o *isisOrdering) OnReceiveTransaction(nodeID string, msg manager.Message) Outbound {
+func (o *ISISOrdering) OnReceiveTransaction(nodeID string, msg manager.Message) *Outbound {
 	o.counter++
 	item := NewQueueItem(
 		msg.Transaction.MsgId,
@@ -121,17 +122,17 @@ func (o *isisOrdering) OnReceiveTransaction(nodeID string, msg manager.Message) 
 	o.holdbackQueue.Enqueue(item)
 	o.messageMap[msg.Transaction.MsgId] = item
 	// Send TypePropose back to msg.Transaction.Sender
-	return Outbound{
-		To:	msg.Transaction.Sender,
+	return &Outbound{
+		To: msg.Transaction.Sender,
 		Msg: manager.NewPropose(
 			msg.Transaction.MsgId,
-			o.counter, 
+			o.counter,
 			nodeID,
 		),
 	}
 }
 
-func (o *isisOrdering) OnReceivePropose(msg manager.Message) *Outbound {
+func (o *ISISOrdering) OnReceivePropose(msg manager.Message) *Outbound {
 	msgID := msg.Propose.MsgId
 	state, ok := o.proposals[msgID]
 	if !ok {
@@ -152,10 +153,10 @@ func (o *isisOrdering) OnReceivePropose(msg manager.Message) *Outbound {
 	return nil
 }
 
-func (o *isisOrdering) onReceiveAgree(msg manager.Message) {
+func (o *ISISOrdering) onReceiveAgree(msg manager.Message) *Outbound {
 	item, ok := o.messageMap[msg.Agree.MsgId]
 	if !ok {
-		return
+		return nil
 	}
 	item.priority = msg.Agree.AgreedPriority
 	item.deliverable = true
@@ -164,4 +165,5 @@ func (o *isisOrdering) onReceiveAgree(msg manager.Message) {
 	if msg.Agree.AgreedPriority > o.counter {
 		o.counter = msg.Agree.AgreedPriority
 	}
+	return nil
 }

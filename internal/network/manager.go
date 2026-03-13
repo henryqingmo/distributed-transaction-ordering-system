@@ -55,7 +55,6 @@ func (m *Manager) Listen() error {
 	return nil
 }
 
-
 func (m *Manager) acceptHandshake(conn net.Conn) {
 	msg, err := ReadMsg(conn)
 	if err != nil || msg.Type != TypeHandshake || msg.SenderID == "" {
@@ -94,7 +93,7 @@ func (m *Manager) ConnectToPeers(nodes []config.NodeInfo) error {
 }
 
 // dialWithRetry keeps trying to connect until successful, with 500ms between attempts.
-// Heartbeat 
+// Heartbeat
 func dialWithRetry(addr string) (net.Conn, error) {
 	for {
 		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
@@ -127,7 +126,7 @@ func (m *Manager) Send(nodeID string, msg Message) error {
 	return nil
 }
 
-// markDead removes the peer from the live map and signals the failure channel 
+// markDead removes the peer from the live map and signals the failure channel
 func (m *Manager) markDead(nodeID string) {
 	m.mu.Lock()
 	_, alive := m.peers[nodeID]
