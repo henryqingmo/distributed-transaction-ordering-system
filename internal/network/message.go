@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 )
 
 // yanze: Length-prefixed JSON encode/decode helpers
@@ -69,8 +70,9 @@ const (
 )
 
 type MsgTransaction struct {
-	MsgId  string
-	Sender string
+	MsgId      string
+	Sender     string
+	OriginTime time.Time // set by originator at broadcast time; used for CDF latency
 
 	Kind    Txkind
 	Account string // for Deposit
@@ -90,26 +92,31 @@ type MsgAgree struct {
 	AgreedPriority float64
 }
 
-func NewTransfer(msgId, source, dest string, amount int) Message {
-
+func NewTransfer(msgId, sender, source, dest string, amount int) Message {
 	return Message{
 		Type: TypeTransaction,
 		Transaction: MsgTransaction{
-			Kind:   Transfer,
-			Source: source,
-			Dest:   dest,
-			Amount: amount,
+			MsgId:      msgId,
+			Sender:     sender,
+			OriginTime: time.Now(),
+			Kind:       Transfer,
+			Source:     source,
+			Dest:       dest,
+			Amount:     amount,
 		},
 	}
 }
 
-func NewDeposit(msgId, account string, amount int) Message {
+func NewDeposit(msgId, sender, account string, amount int) Message {
 	return Message{
 		Type: TypeTransaction,
 		Transaction: MsgTransaction{
-			Kind:    Deposit,
-			Account: account,
-			Amount:  amount,
+			MsgId:      msgId,
+			Sender:     sender,
+			OriginTime: time.Now(),
+			Kind:       Deposit,
+			Account:    account,
+			Amount:     amount,
 		},
 	}
 }

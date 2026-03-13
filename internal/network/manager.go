@@ -10,12 +10,14 @@ import (
 
 type Manager struct {
 	self     config.NodeInfo
-	peers    map[string]net.Conn // nodeID of TCP connection
-	peerIDs  []string            // all peer IDs
+	peers    map[string]net.Conn // nodeID -> TCP connection
+	peerIDs  []string            // all peer IDs, fixed after ConnectToPeers
 	mu       sync.Mutex          // protects peers map
-	inbox    chan Message        // incoming messages for the node to consume
-	failures chan string         // IDs of peers that died
+	inbox    chan Message         // incoming messages for the node to consume
+	failures chan string          // IDs of peers that died
 	listener net.Listener
+	closed   chan struct{}        // closed by Close() to signal all goroutines to exit
+	wg       sync.WaitGroup      // tracks live handleConnection goroutines
 }
 
 func NewManager(self config.NodeInfo, inboxSize int) *Manager {
@@ -25,26 +27,32 @@ func NewManager(self config.NodeInfo, inboxSize int) *Manager {
 		peerIDs:  []string{},
 		inbox:    make(chan Message, inboxSize),
 		failures: make(chan string, inboxSize),
+		closed:   make(chan struct{}),
 	}
 }
 
+
 func (m *Manager) Listen() error {
-	addr := net.JoinHostPort(m.self.Host, m.self.Port)
+	addr := net.JoinHostPort("", m.self.Port)
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}
 	m.listener = ln
-	defer ln.Close()
 
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			return fmt.Errorf("failed to accept connection: %w", err)
+	go func() {
+		defer ln.Close()
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// Listener was closed by Close(); exit cleanly.
+				return
+			}
+			go m.acceptHandshake(conn)
 		}
-		go m.acceptHandshake(conn)
-	}
+	}()
+	return nil
 }
 
 
@@ -134,20 +142,38 @@ func (m *Manager) markDead(nodeID string) {
 }
 
 func (m *Manager) handleConnection(nodeID string, conn net.Conn) {
+	m.wg.Add(1)
+	defer m.wg.Done()
 	defer m.markDead(nodeID)
 	for {
 		msg, err := ReadMsg(conn)
 		if err != nil {
 			return
 		}
-		m.inbox <- msg
+		select {
+		case m.inbox <- msg:
+		case <-m.closed:
+			return
+		}
 	}
 }
 
 func (m *Manager) Inbox() <-chan Message   { return m.inbox }
 func (m *Manager) Failures() <-chan string { return m.failures }
 func (m *Manager) Close() {
+	// Signal all goroutines to stop.
+	close(m.closed)
+	// Stop accepting new connections.
 	if m.listener != nil {
 		m.listener.Close()
 	}
+	// Close all peer connections; this unblocks any ReadMsg calls.
+	m.mu.Lock()
+	for id, conn := range m.peers {
+		conn.Close()
+		delete(m.peers, id)
+	}
+	m.mu.Unlock()
+	// Wait for all read goroutines to exit.
+	m.wg.Wait()
 }

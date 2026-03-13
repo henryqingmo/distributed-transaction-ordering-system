@@ -3,6 +3,7 @@ package ordering
 import (
 	manager "cs425_mp1/internal/network"
 	"sort"
+	"time"
 )
 
 type Queue struct {
@@ -10,11 +11,12 @@ type Queue struct {
 }
 
 type QueueItem struct {
-	id          string
-	tx          manager.MsgTransaction
-	priority    float64
-	deliverable bool
-	sender      string
+	id           string
+	tx           manager.MsgTransaction
+	priority     float64
+	deliverable  bool
+	sender       string
+	DeliveryTime time.Time // set when item is dequeued for delivery
 }
 
 type isisOrdering struct {
@@ -93,10 +95,10 @@ func (o *isisOrdering) DeliveryReady() []*QueueItem {
 	var ready []*QueueItem
 	for len(o.holdbackQueue.items) > 0 {
 		item := o.holdbackQueue.Peek()
-
 		if !item.deliverable {
 			break
 		}
+		item.DeliveryTime = time.Now()
 		ready = append(ready, o.holdbackQueue.Dequeue())
 	}
 	return ready
