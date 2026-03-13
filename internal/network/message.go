@@ -9,11 +9,10 @@ const (
 )
 
 type Message struct {
-	ID          string
 	Type        MessageType
-	Transaction *MsgTransaction
-	Propose     *MsgPropose
-	Agree       *MsgAgree
+	Transaction MsgTransaction
+	Propose     MsgPropose
+	Agree       MsgAgree
 }
 
 type Txkind int
@@ -24,6 +23,9 @@ const (
 )
 
 type MsgTransaction struct {
+	MsgId  string
+	Sender string
+
 	Kind    Txkind
 	Account string // for Deposit
 	Amount  int
@@ -43,11 +45,11 @@ type MsgAgree struct {
 	FinalNodeID    string
 }
 
-func NewTransfer(source, dest string, amount int) Message {
+func NewTransfer(msgId, source, dest string, amount int) Message {
 
 	return Message{
 		Type: TypeTransaction,
-		Transaction: &MsgTransaction{
+		Transaction: MsgTransaction{
 			Kind:   Transfer,
 			Source: source,
 			Dest:   dest,
@@ -56,10 +58,10 @@ func NewTransfer(source, dest string, amount int) Message {
 	}
 }
 
-func NewDeposit(account string, amount int) Message {
+func NewDeposit(msgId, account string, amount int) Message {
 	return Message{
 		Type: TypeTransaction,
-		Transaction: &MsgTransaction{
+		Transaction: MsgTransaction{
 			Kind:    Deposit,
 			Account: account,
 			Amount:  amount,

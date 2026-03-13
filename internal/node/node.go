@@ -15,6 +15,7 @@ type Node struct {
 	identifier     config.NodeInfo
 	parsed         config.Parsed
 	networkManager manager.Manager
+	msgCounter     int
 }
 
 func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
@@ -24,6 +25,7 @@ func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
 	return &Node{
 		identifier: identifier,
 		parsed:     parsed,
+		msgCounter: 0,
 	}
 }
 
@@ -53,6 +55,10 @@ func (n *Node) Run() {
 		Enter the main event loop
 		*/
 
+		n.msgCounter++
+
+		MsgID := n.identifier.ID + "-" + strconv.Itoa(n.msgCounter)
+
 		switch action {
 		case "DEPOSIT":
 			account := fields[1]
@@ -60,7 +66,7 @@ func (n *Node) Run() {
 			if err != nil {
 				fmt.Println("conversion error:", err)
 			}
-			manager.NewDeposit(account, amount)
+			manager.NewDeposit(MsgID, account, amount)
 		case "TRANSFER":
 			account1 := fields[1]
 			account2 := fields[3]
@@ -68,7 +74,7 @@ func (n *Node) Run() {
 			if err != nil {
 				fmt.Println("conversion error:", err)
 			}
-			manager.NewTransfer(account1, account2, amount)
+			manager.NewTransfer(MsgID, account1, account2, amount)
 		}
 
 		select {
