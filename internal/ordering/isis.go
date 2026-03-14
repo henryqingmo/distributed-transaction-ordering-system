@@ -153,6 +153,25 @@ func (o *ISISOrdering) OnReceivePropose(msg manager.Message) *Outbound {
 	return nil
 }
 
+// PeerFailed decrements the expected proposal count and returns any TypeAgree
+// messages that can now be finalized because enough proposals have been collected.
+func (o *ISISOrdering) PeerFailed() []*Outbound {
+	if o.numNodes > 1 {
+		o.numNodes--
+	}
+	var out []*Outbound
+	for msgID, state := range o.proposals {
+		if o.numNodes > 0 && state.count >= o.numNodes {
+			delete(o.proposals, msgID)
+			out = append(out, &Outbound{
+				To:  "",
+				Msg: manager.NewAgree(msgID, state.maxPriority),
+			})
+		}
+	}
+	return out
+}
+
 func (o *ISISOrdering) onReceiveAgree(msg manager.Message) *Outbound {
 	item, ok := o.messageMap[msg.Agree.MsgId]
 	if !ok {
