@@ -24,6 +24,10 @@ type Node struct {
 
 func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
 	mgr := manager.NewManager(identifier, 1024)
+	// Listen must be called before ConnectToPeers so other nodes can reach us.
+	if err := mgr.Listen(); err != nil {
+		log.Fatalf("listen: %v", err)
+	}
 	mgr.ConnectToPeers(parsed.Nodes)
 	ord := ordering.NewISISOrdering(len(parsed.Nodes))
 	led := ledger.NewLedger()
@@ -72,6 +76,15 @@ func (n *Node) parseLine(line string) (manager.Message, bool) {
 	}
 }
 
+func (n *Node) applyAndPrint(tx manager.MsgTransaction) {
+	if tx.Kind == manager.Deposit {
+		n.ledger.Deposit(tx.Account, tx.Amount)
+	} else {
+		n.ledger.Transfer(tx.Source, tx.Dest, tx.Amount)
+	}
+	fmt.Println(n.ledger.Balances())
+}
+
 func (n *Node) Run() {
 	txCh := make(chan manager.Message, 64)
 
@@ -96,34 +109,56 @@ func (n *Node) Run() {
 		select {
 		case msg, ok := <-txCh:
 			if !ok {
-				return
+				// Stdin closed: stop reading stdin but keep the node alive to
+				// finish any in-flight ISIS rounds and deliver pending transactions.
+				txCh = nil
+				continue
 			}
+			// Sender must be node ID (used for routing propose replies back to originator).
 			msg.SenderID = n.identifier.ID
-			msg.Transaction.Sender = n.identifier.Host
+			msg.Transaction.Sender = n.identifier.ID
 			n.networkManager.Broadcast(msg)
-			out := n.ordering.HandleMessage(n.identifier.ID, msg)
-			n.ordering.HandleMessage(n.identifier.ID, out.Msg)
 
-			_ = msg
+			// Originator also processes the transaction locally to contribute its proposal.
+			propOut := n.ordering.HandleMessage(n.identifier.ID, msg)
+			if propOut != nil {
+				// Feed the local proposal back into the ordering layer.
+				agreeOut := n.ordering.HandleMessage(n.identifier.ID, propOut.Msg)
+				if agreeOut != nil {
+					// All proposals collected (single-node or last proposal was ours).
+					n.networkManager.Broadcast(agreeOut.Msg)
+					n.ordering.HandleMessage(n.identifier.ID, agreeOut.Msg)
+					for _, tx := range n.ordering.DeliveryReady() {
+						n.applyAndPrint(tx)
+					}
+				}
+			}
+
 		case msg := <-n.networkManager.Inbox():
 			out := n.ordering.HandleMessage(n.identifier.ID, msg)
 			if out != nil {
 				if out.To == "" {
+					// Originator is broadcasting TypeAgree — also apply it locally.
 					n.networkManager.Broadcast(out.Msg)
+					n.ordering.HandleMessage(n.identifier.ID, out.Msg)
 				} else {
 					n.networkManager.Send(out.To, out.Msg)
 				}
 			}
 			for _, tx := range n.ordering.DeliveryReady() {
-				if tx.Kind == manager.Deposit {
-					n.ledger.Deposit(tx.Account, tx.Amount)
-				} else {
-					n.ledger.Transfer(tx.Source, tx.Dest, tx.Amount)
-				}
-				fmt.Println(n.ledger.Balances())
+				n.applyAndPrint(tx)
 			}
+
 		case id := <-n.networkManager.Failures():
 			log.Printf("peer %s died", id)
+			// Reduce the quorum and check if any pending proposals can now finalize.
+			for _, agreeOut := range n.ordering.PeerFailed() {
+				n.networkManager.Broadcast(agreeOut.Msg)
+				n.ordering.HandleMessage(n.identifier.ID, agreeOut.Msg)
+				for _, tx := range n.ordering.DeliveryReady() {
+					n.applyAndPrint(tx)
+				}
+			}
 		}
 	}
 }
