@@ -92,15 +92,21 @@ func (q *Queue) Sort() {
 	})
 }
 
-func (o *ISISOrdering) DeliveryReady() []manager.MsgTransaction {
-	var ready []manager.MsgTransaction
+type DeliveryResult struct {
+	Tx           manager.MsgTransaction
+	DeliveryTime time.Time
+}
+
+func (o *ISISOrdering) DeliveryReady() []DeliveryResult {
+	var ready []DeliveryResult
 	for len(o.holdbackQueue.items) > 0 {
 		item := o.holdbackQueue.Peek()
 		if !item.deliverable {
 			break
 		}
 		item.DeliveryTime = time.Now()
-		ready = append(ready, o.holdbackQueue.Dequeue().tx)
+		dequeued := o.holdbackQueue.Dequeue()
+		ready = append(ready, DeliveryResult{Tx: dequeued.tx, DeliveryTime: dequeued.DeliveryTime})
 	}
 	return ready
 }

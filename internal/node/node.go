@@ -6,6 +6,7 @@ import (
 	"cs425_mp1/internal/config"
 	manager "cs425_mp1/internal/network"
 	ordering "cs425_mp1/internal/ordering"
+	"cs425_mp1/internal/timing"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ type Node struct {
 	msgCounter     int
 	ordering       *ordering.ISISOrdering
 	ledger         *ledger.Ledger
+	recorder       *timing.Recorder
 }
 
 func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
@@ -39,6 +41,7 @@ func NewNode(identifier config.NodeInfo, parsed config.Parsed) *Node {
 		networkManager: mgr,
 		ordering:       ord,
 		ledger:         led,
+		recorder:       timing.NewRecorder(),
 	}
 }
 
@@ -76,13 +79,19 @@ func (n *Node) parseLine(line string) (manager.Message, bool) {
 	}
 }
 
-func (n *Node) applyAndPrint(tx manager.MsgTransaction) {
+func (n *Node) applyAndPrint(result ordering.DeliveryResult) {
+	tx := result.Tx
+	n.recorder.Record(tx.OriginTime, result.DeliveryTime)
 	if tx.Kind == manager.Deposit {
 		n.ledger.Deposit(tx.Account, tx.Amount)
 	} else {
 		n.ledger.Transfer(tx.Source, tx.Dest, tx.Amount)
 	}
 	fmt.Println(n.ledger.Balances())
+}
+
+func (n *Node) FlushLatencies(path string) error {
+	return n.recorder.Flush(path)
 }
 
 func (n *Node) Run() {
@@ -109,8 +118,6 @@ func (n *Node) Run() {
 		select {
 		case msg, ok := <-txCh:
 			if !ok {
-				// Stdin closed: stop reading stdin but keep the node alive to
-				// finish any in-flight ISIS rounds and deliver pending transactions.
 				txCh = nil
 				continue
 			}
@@ -128,8 +135,8 @@ func (n *Node) Run() {
 					// All proposals collected (single-node or last proposal was ours).
 					n.networkManager.Broadcast(agreeOut.Msg)
 					n.ordering.HandleMessage(n.identifier.ID, agreeOut.Msg)
-					for _, tx := range n.ordering.DeliveryReady() {
-						n.applyAndPrint(tx)
+					for _, result := range n.ordering.DeliveryReady() {
+						n.applyAndPrint(result)
 					}
 				}
 			}
@@ -145,8 +152,8 @@ func (n *Node) Run() {
 					n.networkManager.Send(out.To, out.Msg)
 				}
 			}
-			for _, tx := range n.ordering.DeliveryReady() {
-				n.applyAndPrint(tx)
+			for _, result := range n.ordering.DeliveryReady() {
+				n.applyAndPrint(result)
 			}
 
 		case id := <-n.networkManager.Failures():
@@ -155,8 +162,8 @@ func (n *Node) Run() {
 			for _, agreeOut := range n.ordering.PeerFailed() {
 				n.networkManager.Broadcast(agreeOut.Msg)
 				n.ordering.HandleMessage(n.identifier.ID, agreeOut.Msg)
-				for _, tx := range n.ordering.DeliveryReady() {
-					n.applyAndPrint(tx)
+				for _, result := range n.ordering.DeliveryReady() {
+					n.applyAndPrint(result)
 				}
 			}
 		}

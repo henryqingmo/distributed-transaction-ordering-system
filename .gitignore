@@ -2,3 +2,6 @@
 .account/ledger_test.go
 CLAUDE.md
 mp1_node
+latency*
+*.png
+node

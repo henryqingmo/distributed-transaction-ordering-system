@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -22,9 +24,9 @@ func main() {
 		log.Fatalf("parse config: %v", err)
 	}
 
-	for _, n := range parsed.Nodes {
-		fmt.Printf("ID: %s, Host: %s, Port: %s\n", n.ID, n.Host, n.Port)
-	}
+	//for _, n := range parsed.Nodes {
+	//fmt.Printf("ID: %s, Host: %s, Port: %s\n", n.ID, n.Host, n.Port)
+	//}
 	identifier := os.Args[1]
 
 	nodeInfo, err := config.ParseIdentifier(parsed, identifier)
@@ -33,6 +35,17 @@ func main() {
 	}
 
 	n := node.NewNode(nodeInfo, parsed)
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		path := fmt.Sprintf("latency_%s.txt", identifier)
+		if err := n.FlushLatencies(path); err != nil {
+			log.Printf("flush latencies: %v", err)
+		}
+		os.Exit(0)
+	}()
 
 	n.Run()
 
