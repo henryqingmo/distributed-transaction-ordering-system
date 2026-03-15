@@ -81,7 +81,9 @@ func (n *Node) parseLine(line string) (manager.Message, bool) {
 
 func (n *Node) applyAndPrint(result ordering.DeliveryResult) {
 	tx := result.Tx
-	n.recorder.Record(tx.OriginTime, result.DeliveryTime)
+	if tx.Sender == n.identifier.ID {
+		n.recorder.Record(tx.OriginTime, result.DeliveryTime)
+	}
 	if tx.Kind == manager.Deposit {
 		n.ledger.Deposit(tx.Account, tx.Amount)
 	} else {
@@ -152,6 +154,10 @@ func (n *Node) Run() {
 					n.networkManager.Send(out.To, out.Msg)
 				}
 			}
+			// Re-broadcast TypeAgree so peers get it even if originator died mid-broadcast.
+			if msg.Type == manager.TypeAgree {
+				n.networkManager.Broadcast(msg)
+			}
 			for _, result := range n.ordering.DeliveryReady() {
 				n.applyAndPrint(result)
 			}
@@ -159,7 +165,7 @@ func (n *Node) Run() {
 		case id := <-n.networkManager.Failures():
 			log.Printf("peer %s died", id)
 			// Reduce the quorum and check if any pending proposals can now finalize.
-			for _, agreeOut := range n.ordering.PeerFailed() {
+			for _, agreeOut := range n.ordering.PeerFailed(id) {
 				n.networkManager.Broadcast(agreeOut.Msg)
 				n.ordering.HandleMessage(n.identifier.ID, agreeOut.Msg)
 				for _, result := range n.ordering.DeliveryReady() {
