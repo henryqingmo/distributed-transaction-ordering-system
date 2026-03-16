@@ -96,6 +96,42 @@ func (n *Node) FlushLatencies(path string) error {
 	return n.recorder.Flush(path)
 }
 
+// handleMsg processes a single message received from the network.
+func (n *Node) handleMsg(msg manager.Message) {
+	out := n.ordering.HandleMessage(n.identifier.ID, msg)
+	if out != nil {
+		if out.To == "" {
+			// Originator is broadcasting TypeAgree — also apply it locally.
+			n.networkManager.Broadcast(out.Msg)
+			n.ordering.HandleMessage(n.identifier.ID, out.Msg)
+		} else {
+			n.networkManager.Send(out.To, out.Msg)
+		}
+	}
+	// Re-broadcast TypeAgree so peers get it even if originator died mid-broadcast.
+	if msg.Type == manager.TypeAgree {
+		n.networkManager.Broadcast(msg)
+	}
+	for _, result := range n.ordering.DeliveryReady() {
+		n.applyAndPrint(result)
+	}
+}
+
+// drainInbox processes all messages currently buffered in the inbox without blocking.
+// Called before PeerFailed so that any TypeAgree re-broadcasts that arrived before
+// the failure notification are applied first — preventing incorrect purging of items
+// that were already agreed upon by the originator before it crashed.
+func (n *Node) drainInbox() {
+	for {
+		select {
+		case msg := <-n.networkManager.Inbox():
+			n.handleMsg(msg)
+		default:
+			return
+		}
+	}
+}
+
 func (n *Node) Run() {
 	txCh := make(chan manager.Message, 64)
 
@@ -144,26 +180,15 @@ func (n *Node) Run() {
 			}
 
 		case msg := <-n.networkManager.Inbox():
-			out := n.ordering.HandleMessage(n.identifier.ID, msg)
-			if out != nil {
-				if out.To == "" {
-					// Originator is broadcasting TypeAgree — also apply it locally.
-					n.networkManager.Broadcast(out.Msg)
-					n.ordering.HandleMessage(n.identifier.ID, out.Msg)
-				} else {
-					n.networkManager.Send(out.To, out.Msg)
-				}
-			}
-			// Re-broadcast TypeAgree so peers get it even if originator died mid-broadcast.
-			if msg.Type == manager.TypeAgree {
-				n.networkManager.Broadcast(msg)
-			}
-			for _, result := range n.ordering.DeliveryReady() {
-				n.applyAndPrint(result)
-			}
+			n.handleMsg(msg)
 
 		case id := <-n.networkManager.Failures():
 			log.Printf("peer %s died", id)
+			// Drain inbox first: process any buffered TypeAgree re-broadcasts before
+			// PeerFailed purges undeliverable items from the holdback queue.
+			// Without this, a node can purge an item that was already TypeAgreed
+			// at other nodes (the re-broadcast just hadn't arrived yet).
+			n.drainInbox()
 			// Reduce the quorum and check if any pending proposals can now finalize.
 			for _, agreeOut := range n.ordering.PeerFailed(id) {
 				n.networkManager.Broadcast(agreeOut.Msg)
